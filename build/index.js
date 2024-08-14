@@ -796,6 +796,7 @@ var inSpeed = op.inFloat("Speed");
 var inRows = op.inFloat("Rows");
 var inColumns = op.inFloat("Columns");
 var inReset = op.inTriggerButton("Reset");
+var inBounds = op.inBool("Enable Bounds");
 var balls = [];
 var tiles = [];
 var bounds = {
@@ -805,10 +806,12 @@ var bounds = {
   bottom: new Polygon,
   span: new Polygon,
   min: vec2(0, 0),
-  max: vec2(10, 10)
+  max: vec2(10, 10),
+  style: "dark"
 };
 var outBoard = op.outArray("Board", tiles);
 var outBalls = op.outArray("Balls", balls);
+var boundsStyle = op.outString("Bounds Style", "dark");
 outBoard.setRef(tiles);
 outBalls.setRef(balls);
 var setup = () => {
@@ -849,19 +852,16 @@ var setup = () => {
   bounds.span = new Box(vec2(columns / 2, rows / 2), columns / 2, rows / 2).toPolygon();
   bounds.max = vec2(columns + 0.5, rows + 0.5);
   const newLength = rows * columns;
-  if (newLength !== tiles.length) {
-    tiles.length = 0;
-    for (let i = 0;i < rows * columns; i += 1) {
-      const x = i % rows;
-      const y = (i - x) / columns;
-      const aboveHalf = (i + 1) * 2 > newLength;
-      tiles.push({
-        style: aboveHalf ? "dark" : "light",
-        type: "tile",
-        flipTime: 0,
-        object: new Box(vec2(x, y), 1, 1).toPolygon()
-      });
-    }
+  tiles.length = 0;
+  for (let i = 0;i < rows * columns; i += 1) {
+    const x = i % rows;
+    const y = (i - x) / columns;
+    tiles.push({
+      style: "light",
+      type: "tile",
+      flipTime: 0,
+      object: new Box(vec2(x, y), 1, 1).toPolygon()
+    });
   }
   balls.length = 0;
   balls.push({
@@ -871,9 +871,9 @@ var setup = () => {
     direction: vec2(1, 1)
   }, {
     type: "ball",
-    style: "dark",
+    style: "light",
     object: new Circle(vec2(rows - 1.5, columns - 1.5), 0.5),
-    direction: vec2(-1, -1)
+    direction: vec2(1, -1)
   });
 };
 inRows.onValueChanged = inColumns.onValueChanged = setup;
@@ -899,40 +899,51 @@ var timer = (() => {
 inReset.onTriggered = setup;
 inExec.onTriggered = () => {
   const speed = inSpeed.get() || 0;
+  const enableBounds = inBounds.get() ?? true;
   op.setUiError("speed-error", speed === 0 ? "Speed unset, cannot tick" : null);
   if (speed === 0) {
     return;
   }
   const { deltaTime, currentTick } = timer.tick();
+  if (Math.random() < 0.015) {
+    const tile = tiles[Math.floor(Math.random() * tiles.length)];
+    tile.style = "dark";
+  }
   a:
     for (let i = 0;i < balls.length; i += 1) {
       const ball = balls[i];
       const delta = ball.direction.clone().normalize().scale(speed * deltaTime);
       const imposter = new Circle(ball.object.position.clone().add(delta), ball.object.radius);
-      const [intersects, axis] = hitBounds({
-        direction: ball.direction,
-        style: ball.style,
-        type: "ball",
-        object: imposter
-      });
-      if (intersects) {
-        if (intersects === "invert") {
-          ball.direction.scale(-1, -1);
-        } else {
-          ball.direction.reflect(axis);
+      if (enableBounds) {
+        const [intersects, axis] = hitBounds({
+          direction: ball.direction,
+          style: ball.style,
+          type: "ball",
+          object: imposter
+        });
+        if (intersects) {
+          if (intersects === "invert") {
+            ball.direction.scale(-1, -1);
+          } else {
+            ball.direction.reflect(axis);
+          }
+          ball.object.translate(ball.direction.x * speed * deltaTime, ball.direction.y * speed * deltaTime);
+          if (bounds.style !== ball.style) {
+            bounds.style = bounds.style === "dark" ? "light" : "dark";
+            boundsStyle.set(bounds.style);
+          }
+          continue;
         }
-        ball.object.translate(ball.direction.x * speed * deltaTime, ball.direction.y * speed * deltaTime);
-        continue;
       }
       for (const tile of tiles) {
         if (tile.style === ball.style) {
           continue;
         }
-        const [doesIntersect, axis2] = hitTile(imposter, tile);
+        const [doesIntersect, axis] = hitTile(imposter, tile);
         if (doesIntersect) {
           tile.style = tile.style === "dark" ? "light" : "dark";
           tile.flipTime = currentTick;
-          if (ball.bounces === undefined && Math.random() < 0.15) {
+          if (ball.bounces === undefined && Math.random() < 0.35) {
             balls.push({
               direction: ball.direction.clone(),
               style: ball.style,
@@ -948,7 +959,7 @@ inExec.onTriggered = () => {
             }
             ball.bounces -= 1;
           }
-          ball.direction.reflect(axis2);
+          ball.direction.reflect(axis);
           const direction = ball.direction.clone().normalize();
           ball.object.translate(direction.x * speed * deltaTime, direction.y * speed * deltaTime);
           continue a;

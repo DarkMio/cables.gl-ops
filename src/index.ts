@@ -99,6 +99,7 @@ const inSpeed = op.inFloat("Speed");
 const inRows = op.inFloat("Rows");
 const inColumns = op.inFloat("Columns");
 const inReset = op.inTriggerButton("Reset");
+const inBounds = op.inBool("Enable Bounds");
 
 const balls: Ball[] = [];
 const tiles: Tile[] = [];
@@ -111,9 +112,11 @@ const bounds = {
   span: new Polygon(),
   min: vec2(0, 0),
   max: vec2(10, 10),
+  style: "dark",
 };
 const outBoard = op.outArray("Board", tiles);
 const outBalls = op.outArray("Balls", balls);
+const boundsStyle = op.outString("Bounds Style", "dark");
 
 outBoard.setRef(tiles);
 outBalls.setRef(balls);
@@ -166,22 +169,20 @@ const setup = () => {
   bounds.max = vec2(columns + 0.5, rows + 0.5);
 
   const newLength = rows * columns;
-  // maybe reasonable to keep the board as is, maybe allows for funky stuff?
-  if (newLength !== tiles.length) {
-    tiles.length = 0;
-    for (let i = 0; i < rows * columns; i += 1) {
-      // boring: bottom left -> up right addressing
-      const x = i % rows;
-      const y = (i - x) / columns;
 
-      const aboveHalf = (i + 1) * 2 > newLength;
-      tiles.push({
-        style: aboveHalf ? "dark" : "light",
-        type: "tile",
-        flipTime: 0,
-        object: new Box(vec2(x, y), 1, 1).toPolygon(),
-      });
-    }
+  tiles.length = 0;
+  for (let i = 0; i < rows * columns; i += 1) {
+    // boring: bottom left -> up right addressing
+    const x = i % rows;
+    const y = (i - x) / columns;
+
+    // const aboveHalf = (i + 1) * 2 > newLength;
+    tiles.push({
+      style: "light",
+      type: "tile",
+      flipTime: 0,
+      object: new Box(vec2(x, y), 1, 1).toPolygon(),
+    });
   }
 
   balls.length = 0;
@@ -194,9 +195,9 @@ const setup = () => {
     },
     {
       type: "ball",
-      style: "dark",
+      style: "light",
       object: new Circle(vec2(rows - 1.5, columns - 1.5), 0.5),
-      direction: vec2(-1, -1),
+      direction: vec2(1, -1),
     },
   );
 };
@@ -228,12 +229,18 @@ const timer = (() => {
 inReset.onTriggered = setup;
 inExec.onTriggered = () => {
   const speed = inSpeed.get() || 0;
+  const enableBounds = inBounds.get() ?? true;
   op.setUiError("speed-error", speed === 0 ? "Speed unset, cannot tick" : null);
   if (speed === 0) {
     return;
   }
 
   const { deltaTime, currentTick } = timer.tick();
+
+  if (Math.random() < 0.015) {
+    const tile = tiles[Math.floor(Math.random() * tiles.length)];
+    tile.style = "dark";
+  }
 
   // const ballCopies = [...balls];
   a: for (let i = 0; i < balls.length; i += 1) {
@@ -250,24 +257,31 @@ inExec.onTriggered = () => {
     );
     // let direction = ball.direction;
 
-    const [intersects, axis] = hitBounds({
-      direction: ball.direction,
-      style: ball.style,
-      type: "ball",
-      object: imposter,
-    });
-    if (intersects) {
-      if (intersects === "invert") {
-        ball.direction.scale(-1, -1);
-      } else {
-        ball.direction.reflect(axis);
-      }
-      ball.object.translate(
-        ball.direction.x * speed * deltaTime,
-        ball.direction.y * speed * deltaTime,
-      );
+    if (enableBounds) {
+      const [intersects, axis] = hitBounds({
+        direction: ball.direction,
+        style: ball.style,
+        type: "ball",
+        object: imposter,
+      });
+      if (intersects) {
+        if (intersects === "invert") {
+          ball.direction.scale(-1, -1);
+        } else {
+          ball.direction.reflect(axis);
+        }
+        ball.object.translate(
+          ball.direction.x * speed * deltaTime,
+          ball.direction.y * speed * deltaTime,
+        );
 
-      continue;
+        if (bounds.style !== ball.style) {
+          bounds.style = bounds.style === "dark" ? "light" : "dark";
+          boundsStyle.set(bounds.style);
+        }
+
+        continue;
+      }
     }
 
     // case b: it hit any edge of a box
@@ -281,7 +295,7 @@ inExec.onTriggered = () => {
         tile.style = tile.style === "dark" ? "light" : "dark";
         tile.flipTime = currentTick;
 
-        if (ball.bounces === undefined && Math.random() < 0.15) {
+        if (ball.bounces === undefined && Math.random() < 0.35) {
           balls.push({
             direction: ball.direction.clone(),
             style: ball.style,
