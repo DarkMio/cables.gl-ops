@@ -1,0 +1,17 @@
+{
+  "name": "cables",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@biomejs/biome": "1.8.3",
+    "@types/bun": "latest",
+    "@types/intersects": "^2.7.5"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "collider2d": "^1.1.1",
+    "intersects": "^2.7.2"
+  }
+}
